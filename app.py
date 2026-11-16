@@ -73,6 +73,7 @@ def render(result=None, error: str | None = None) -> str:
   <form action="/ask" method="get">
     <input type="text" name="q" value="{question_value}" placeholder="Ask about the corpus" autofocus>
     <button type="submit">Ask</button>
+    <button type="submit" class="secondary" formaction="/metrics" formnovalidate title="GET {html.escape(metrics_mod.METRICS_URL)}">Metrics</button>
   </form>
   <div class="chips">{examples}</div>
   {body}
@@ -102,6 +103,12 @@ def render_metrics(snap=None, error: str | None = None, recorded: bool = False) 
         "<a class='chip' href='/metrics/record'>Record snapshot</a>"
         "<a class='chip' href='/metrics/history'>History (JSON)</a></div>",
     ]
+    status = "failed" if error else "ok"
+    parts.append(
+        "<section><h2>REST call</h2>"
+        f"<p class='note'>GET {html.escape(metrics_mod.METRICS_URL)} — {status}</p>"
+        f"<pre>{html.escape(metrics_mod.describe_request())}</pre></section>"
+    )
     if recorded:
         parts.append("<p class='ok'>Snapshot recorded.</p>")
     if error:
@@ -179,6 +186,16 @@ def _layout(title: str, content: str) -> str:
     padding: 10px 16px;
     font: inherit;
     cursor: pointer;
+  }}
+  button.secondary {{ background: #fff; color: #9a3412; border: 1px solid #fdba74; }}
+  pre {{
+    margin: 0;
+    padding: 10px 12px;
+    background: #f5f5f4;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    white-space: pre-wrap;
+    word-break: break-all;
   }}
   .chips {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }}
   .chip {{
@@ -268,11 +285,14 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, "Not found", "text/plain; charset=utf-8")
 
     def _metrics(self, record: bool) -> None:
+        print(f"metrics: {metrics_mod.describe_request()}", flush=True)
         try:
             snap = metrics_mod.snapshot()
         except Exception as exc:
+            print(f"metrics: failed: {exc}", flush=True)
             self._send(502, render_metrics(error=str(exc)), "text/html; charset=utf-8")
             return
+        print(f"metrics: ok, {snap.sample_count} samples", flush=True)
         if record:
             metrics_mod.record(snap)
         self._send(200, render_metrics(snap, recorded=record), "text/html; charset=utf-8")

@@ -83,11 +83,26 @@ class Snapshot:
         return sum(len(family.samples) for family in self.families)
 
 
-def fetch_text(url: str = METRICS_URL, timeout: float = 10.0, token: str = METRICS_TOKEN) -> str:
+def request_headers(url: str = METRICS_URL, token: str = METRICS_TOKEN) -> dict[str, str]:
     headers = {"Accept": "text/plain"}
     if token and url.startswith("https://"):
         headers["Authorization"] = f"Bearer {token}"
-    request = urllib.request.Request(url, headers=headers)
+    return headers
+
+
+def describe_request(url: str = METRICS_URL, token: str = METRICS_TOKEN) -> str:
+    """The REST call as a curl command, with the bearer token masked."""
+    parts = ["curl -s"]
+    for key, value in request_headers(url, token).items():
+        if key == "Authorization" and token:
+            value = f"Bearer {token[:4]}…{token[-3:]}" if len(token) > 10 else "Bearer ***"
+        parts.append(f"-H '{key}: {value}'")
+    parts.append(url)
+    return " ".join(parts)
+
+
+def fetch_text(url: str = METRICS_URL, timeout: float = 10.0, token: str = METRICS_TOKEN) -> str:
+    request = urllib.request.Request(url, headers=request_headers(url, token))
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read().decode()
