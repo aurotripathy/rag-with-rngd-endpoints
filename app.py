@@ -132,8 +132,10 @@ def render_metrics(snap=None, error: str | None = None, recorded: bool = False) 
                 f"<tbody>{''.join(rows)}</tbody></table></section>"
             )
     parts.append(
-        "<footer>Equivalent to <code>curl -s localhost:8000/metrics | grep '^furiosa_llm_'</code>. "
-        "Set <code>METRICS_URL</code> / <code>METRICS_PREFIX</code> to change the target. "
+        "<footer>Equivalent to <code>curl -s -H 'Authorization: Bearer $FURIOSA_API_KEY' "
+        f"{html.escape(metrics_mod.METRICS_URL)} | grep '^furiosa_llm_'</code>. "
+        "Target defaults to the host of <code>FURIOSA_BASE_URL</code>; set <code>METRICS_URL</code> "
+        "(e.g. <code>http://localhost:8000/metrics</code>) or <code>METRICS_PREFIX</code> to change it. "
         "CLI: <code>python3 metrics.py [--record] [--watch N]</code>.</footer>"
     )
     return _layout("Exporter metrics", "".join(parts))

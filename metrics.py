@@ -2,16 +2,21 @@
 
 Equivalent to:
 
-    curl -s localhost:8000/metrics | grep '^furiosa_llm_'
+    curl -s -H "Authorization: Bearer $FURIOSA_API_KEY" $HOST/metrics | grep '^furiosa_llm_'
 
 but parsed into families/samples, and optionally appended to a JSONL log
 so the state of every metric can be compared over time.
+
+The target defaults to the cloud endpoint's host from FURIOSA_BASE_URL
+(https://endpoint.access.furiosa.dev/metrics). Override with METRICS_URL or
+--url, e.g. http://localhost:8000/metrics for a local `furiosa-llm serve`.
 
 Usage:
     python3 metrics.py                 # print current furiosa_llm_* samples
     python3 metrics.py --all           # print every metric, not just furiosa_llm_*
     python3 metrics.py --record        # print and append a snapshot to data/metrics.jsonl
     python3 metrics.py --watch 5       # re-scrape and record every 5 seconds
+    python3 metrics.py --url http://localhost:8000/metrics
 """
 
 from __future__ import annotations
@@ -34,7 +39,17 @@ from rag import load_env
 load_env()
 
 ROOT = Path(__file__).resolve().parent
-METRICS_URL = os.environ.get("METRICS_URL", "http://localhost:8000/metrics")
+
+
+def _default_metrics_url() -> str:
+    """Derive /metrics from the API base URL: https://host/v1 -> https://host/metrics."""
+    base = os.environ.get("FURIOSA_BASE_URL", "https://endpoint.access.furiosa.dev/v1").rstrip("/")
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+    return f"{base}/metrics"
+
+
+METRICS_URL = os.environ.get("METRICS_URL") or _default_metrics_url()
 METRICS_PREFIX = os.environ.get("METRICS_PREFIX", "furiosa_llm_")
 # Bearer token sent to the exporter. Defaults to the Furiosa API key so a
 # cloud-hosted /metrics route can be scraped with the same credentials.

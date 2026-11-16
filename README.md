@@ -106,17 +106,23 @@ The same data is available in the web UI:
 - `/metrics/record` — scrape, append a snapshot, and show it.
 - `/metrics/history` — all recorded snapshots as JSON.
 
-| Variable         | Default                         | Purpose                                                        |
-| ---------------- | ------------------------------- | -------------------------------------------------------------- |
-| `METRICS_URL`    | `http://localhost:8000/metrics` | Exporter scrape URL                                            |
-| `METRICS_PREFIX` | `furiosa_llm_`                  | Only keep samples with this prefix                             |
-| `METRICS_TOKEN`  | value of `FURIOSA_API_KEY`      | Bearer token sent when `METRICS_URL` is `https://`             |
+| Variable         | Default                                      | Purpose                                            |
+| ---------------- | -------------------------------------------- | -------------------------------------------------- |
+| `METRICS_URL`    | `FURIOSA_BASE_URL` host + `/metrics`         | Exporter scrape URL                                |
+| `METRICS_PREFIX` | `furiosa_llm_`                               | Only keep samples with this prefix                 |
+| `METRICS_TOKEN`  | value of `FURIOSA_API_KEY`                   | Bearer token sent when `METRICS_URL` is `https://` |
 
-`furiosa-llm serve` exposes `/metrics` on the same port as the OpenAI API, so
-this works out of the box against a local server. The hosted endpoint at
-`endpoint.access.furiosa.dev` currently returns 404 for `/metrics` (its gateway
-only routes `/v1/*`), so scraping the cloud deployment requires Furiosa to
-expose a metrics route; once they do, set `METRICS_URL` to it.
+By default the scraper targets the same cloud host as the REST API
+(`https://endpoint.access.furiosa.dev/metrics`). That gateway currently
+returns 404 for `/metrics` (it only routes `/v1/*`), so reading the cloud
+deployment's metrics requires Furiosa to expose that route. To scrape a local
+`furiosa-llm serve` instead, which serves `/metrics` on its API port:
+
+```bash
+python3 metrics.py --url http://localhost:8000/metrics
+# or
+METRICS_URL=http://localhost:8000/metrics python3 app.py
+```
 
 ### From Python
 
