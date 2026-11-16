@@ -29,9 +29,16 @@ from pathlib import Path
 
 from prometheus_client.parser import text_string_to_metric_families
 
+from rag import load_env
+
+load_env()
+
 ROOT = Path(__file__).resolve().parent
 METRICS_URL = os.environ.get("METRICS_URL", "http://localhost:8000/metrics")
 METRICS_PREFIX = os.environ.get("METRICS_PREFIX", "furiosa_llm_")
+# Bearer token sent to the exporter. Defaults to the Furiosa API key so a
+# cloud-hosted /metrics route can be scraped with the same credentials.
+METRICS_TOKEN = os.environ.get("METRICS_TOKEN", os.environ.get("FURIOSA_API_KEY", "")).strip()
 RECORD_PATH = ROOT / "data" / "metrics.jsonl"
 
 
@@ -61,10 +68,21 @@ class Snapshot:
         return sum(len(family.samples) for family in self.families)
 
 
-def fetch_text(url: str = METRICS_URL, timeout: float = 10.0) -> str:
+def fetch_text(url: str = METRICS_URL, timeout: float = 10.0, token: str = METRICS_TOKEN) -> str:
+    headers = {"Accept": "text/plain"}
+    if token and url.startswith("https://"):
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read().decode()
+    except urllib.error.HTTPError as exc:
+        hint = ""
+        if exc.code == 404:
+            hint = " (the gateway does not route this path; ask the endpoint provider to expose /metrics)"
+        elif exc.code in (401, 403):
+            hint = " (set METRICS_TOKEN to a credential accepted by the exporter)"
+        raise RuntimeError(f"Metrics exporter at {url} returned HTTP {exc.code}{hint}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Could not reach metrics exporter at {url}: {exc.reason}") from exc
 
