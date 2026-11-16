@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -129,7 +130,14 @@ def main() -> None:
     do_record = args.record or args.watch is not None
 
     while True:
-        snap = snapshot(args.url, prefix)
+        try:
+            snap = snapshot(args.url, prefix)
+        except RuntimeError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            if args.watch is None:
+                sys.exit(1)
+            time.sleep(args.watch)
+            continue
         print_snapshot(snap)
         if do_record:
             path = record(snap)
