@@ -8,6 +8,7 @@ import os
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import metrics as metrics_mod
 from rag import CORPUS, Pipeline
 
 HOST = os.environ.get("RAG_HOST", "127.0.0.1")
@@ -66,12 +67,85 @@ def render(result=None, error: str | None = None) -> str:
             )
         )
     question_value = html.escape(result.question) if result else ""
+    content = f"""
+  <h1>RNGD sample RAG</h1>
+  <p class="lede">Ask a question over a small Postgres/pgvector corpus. The app embeds the question with <code>{html.escape(settings.embed_model)}</code>, retrieves the nearest passages, reranks them with <code>{html.escape(settings.rerank_model)}</code>, and answers with <code>{html.escape(settings.chat_model)}</code> using only that context.</p>
+  <form action="/ask" method="get">
+    <input type="text" name="q" value="{question_value}" placeholder="Ask about the corpus" autofocus>
+    <button type="submit">Ask</button>
+  </form>
+  <div class="chips">{examples}</div>
+  {body}
+  <section>
+    <h2>Corpus</h2>
+    <ol>{corpus}</ol>
+  </section>
+  <footer>
+    Endpoint <code>{html.escape(settings.base_url)}</code>.
+    Pipeline from the simple RAG demo; models from the RNGD API endpoint guide.
+    Retrieval is an in-memory cosine index, the stand-in for pgvector.
+    <a href="/metrics">Exporter metrics</a>.
+  </footer>
+"""
+    return _layout("RNGD sample RAG", content)
+
+
+def render_metrics(snap=None, error: str | None = None, recorded: bool = False) -> str:
+    history = metrics_mod.load_records()
+    parts: list[str] = [
+        "<h1>Exporter metrics</h1>",
+        f"<p class='lede'>Live state of every <code>{html.escape(metrics_mod.METRICS_PREFIX)}*</code> "
+        f"metric scraped from <code>{html.escape(metrics_mod.METRICS_URL)}</code>. "
+        f"{len(history)} snapshot(s) recorded in <code>{html.escape(str(metrics_mod.RECORD_PATH.relative_to(metrics_mod.ROOT)))}</code>.</p>",
+        "<div class='chips'><a class='chip' href='/'>← RAG</a>"
+        "<a class='chip' href='/metrics'>Refresh</a>"
+        "<a class='chip' href='/metrics/record'>Record snapshot</a>"
+        "<a class='chip' href='/metrics/history'>History (JSON)</a></div>",
+    ]
+    if recorded:
+        parts.append("<p class='ok'>Snapshot recorded.</p>")
+    if error:
+        parts.append(f"<p class='error'>{html.escape(error)}</p>")
+    elif snap is not None:
+        parts.append(
+            f"<p class='note'>Scraped {html.escape(snap.timestamp)} — "
+            f"{len(snap.families)} families, {snap.sample_count} samples.</p>"
+        )
+        if not snap.families:
+            parts.append("<section><p class='note'>No metrics matched the prefix.</p></section>")
+        for family in snap.families:
+            rows = []
+            for sample in family.samples:
+                labels = ", ".join(
+                    f"<span class='lk'>{html.escape(k)}</span>=<span class='lv'>{html.escape(v)}</span>"
+                    for k, v in sorted(sample.labels.items())
+                )
+                rows.append(
+                    f"<tr><td><code>{html.escape(sample.name)}</code></td>"
+                    f"<td class='labels'>{labels}</td>"
+                    f"<td class='value'>{sample.value:g}</td></tr>"
+                )
+            parts.append(
+                f"<section><h2>{html.escape(family.name)} <span class='type'>{html.escape(family.type)}</span></h2>"
+                f"<p class='note'>{html.escape(family.documentation)}</p>"
+                f"<table><thead><tr><th>sample</th><th>labels</th><th>value</th></tr></thead>"
+                f"<tbody>{''.join(rows)}</tbody></table></section>"
+            )
+    parts.append(
+        "<footer>Equivalent to <code>curl -s localhost:8000/metrics | grep '^furiosa_llm_'</code>. "
+        "Set <code>METRICS_URL</code> / <code>METRICS_PREFIX</code> to change the target. "
+        "CLI: <code>python3 metrics.py [--record] [--watch N]</code>.</footer>"
+    )
+    return _layout("Exporter metrics", "".join(parts))
+
+
+def _layout(title: str, content: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RNGD sample RAG</title>
+<title>{html.escape(title)}</title>
 <style>
   :root {{ color-scheme: light; }}
   body {{
@@ -137,27 +211,26 @@ def render(result=None, error: str | None = None) -> str:
     padding: 12px 14px;
     border-radius: 8px;
   }}
+  .ok {{
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+    padding: 12px 14px;
+    border-radius: 8px;
+  }}
   footer {{ color: #78716c; font-size: 0.85rem; margin-top: 28px; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.9rem; }}
+  th {{ text-align: left; color: #78716c; font-weight: 500; padding: 4px 6px; border-bottom: 1px solid #e7e5e4; }}
+  td {{ padding: 4px 6px; border-bottom: 1px solid #f5f5f4; vertical-align: top; }}
+  td.value {{ text-align: right; font-variant-numeric: tabular-nums; color: #9a3412; white-space: nowrap; }}
+  td.labels {{ color: #57534e; font-family: ui-monospace, monospace; font-size: 0.85em; }}
+  .lk {{ color: #78716c; }}
+  .lv {{ color: #1c1917; }}
+  .type {{ color: #a8a29e; font-weight: 400; text-transform: none; letter-spacing: 0; }}
 </style>
 </head>
 <body>
-  <h1>RNGD sample RAG</h1>
-  <p class="lede">Ask a question over a small Postgres/pgvector corpus. The app embeds the question with <code>{html.escape(settings.embed_model)}</code>, retrieves the nearest passages, reranks them with <code>{html.escape(settings.rerank_model)}</code>, and answers with <code>{html.escape(settings.chat_model)}</code> using only that context.</p>
-  <form action="/ask" method="get">
-    <input type="text" name="q" value="{question_value}" placeholder="Ask about the corpus" autofocus>
-    <button type="submit">Ask</button>
-  </form>
-  <div class="chips">{examples}</div>
-  {body}
-  <section>
-    <h2>Corpus</h2>
-    <ol>{corpus}</ol>
-  </section>
-  <footer>
-    Endpoint <code>{html.escape(settings.base_url)}</code>.
-    Pipeline from the simple RAG demo; models from the RNGD API endpoint guide.
-    Retrieval is an in-memory cosine index, the stand-in for pgvector.
-  </footer>
+{content}
 </body>
 </html>
 """
@@ -180,7 +253,27 @@ class Handler(BaseHTTPRequestHandler):
             question = urllib.parse.parse_qs(parsed.query).get("q", [""])[0]
             self._answer(question)
             return
+        if parsed.path in ("/metrics", "/metrics/record"):
+            self._metrics(record="record" in parsed.path)
+            return
+        if parsed.path == "/metrics/history":
+            self._send(
+                200,
+                json.dumps(metrics_mod.load_records()),
+                "application/json",
+            )
+            return
         self._send(404, "Not found", "text/plain; charset=utf-8")
+
+    def _metrics(self, record: bool) -> None:
+        try:
+            snap = metrics_mod.snapshot()
+        except Exception as exc:
+            self._send(502, render_metrics(error=str(exc)), "text/html; charset=utf-8")
+            return
+        if record:
+            metrics_mod.record(snap)
+        self._send(200, render_metrics(snap, recorded=record), "text/html; charset=utf-8")
 
     def _answer(self, question: str) -> None:
         if not question.strip():

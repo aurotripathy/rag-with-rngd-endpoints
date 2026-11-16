@@ -87,6 +87,30 @@ Routes:
 Change the bind address or port with `RAG_HOST` / `RAG_PORT`, e.g.
 `RAG_PORT=9000 python3 app.py`.
 
+### Exporter metrics
+
+`metrics.py` scrapes the Furiosa LLM Prometheus exporter (the equivalent of
+`curl -s localhost:8000/metrics | grep '^furiosa_llm_'`), parses it into
+families and samples, and can append snapshots to `data/metrics.jsonl`.
+
+```bash
+python3 metrics.py              # print current furiosa_llm_* samples
+python3 metrics.py --all        # include non-furiosa metrics too
+python3 metrics.py --record     # also append a snapshot to data/metrics.jsonl
+python3 metrics.py --watch 5    # re-scrape and record every 5 seconds
+```
+
+The same data is available in the web UI:
+
+- `/metrics` — table of every family and sample with labels and values.
+- `/metrics/record` — scrape, append a snapshot, and show it.
+- `/metrics/history` — all recorded snapshots as JSON.
+
+| Variable         | Default                         | Purpose                          |
+| ---------------- | ------------------------------- | -------------------------------- |
+| `METRICS_URL`    | `http://localhost:8000/metrics` | Exporter scrape URL              |
+| `METRICS_PREFIX` | `furiosa_llm_`                  | Only keep samples with this prefix |
+
 ### From Python
 
 ```python
@@ -102,8 +126,9 @@ for hit in result.reranked:
 
 ```
 rag.py             pipeline: settings, embedding cache, retrieve/rerank/generate
-app.py             minimal stdlib HTTP server wrapping the pipeline
-requirements.txt   openai>=1.40
+app.py             minimal stdlib HTTP server wrapping the pipeline and metrics
+metrics.py         Prometheus exporter scraper / snapshot recorder
+requirements.txt   openai, prometheus_client
 .env.example       template for .env
 data/              embeddings cache (gitignored, created on first run)
 ```
